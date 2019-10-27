@@ -41,7 +41,10 @@ final class DetailWebViewController: NSViewController, WKUIDelegate {
 	
 	private var waitingForFirstReload = false
 	private let keyboardDelegate = DetailKeyboardDelegate()
-	
+	private var readingPositionIndicatorView: NSView!
+	private var readingPositionIndicatorOffsetY: CGFloat = 0.0
+	private var readingPositionIndicatorViewTopAnchorConstraint: NSLayoutConstraint?
+
 	private struct MessageName {
 		static let mouseDidEnter = "mouseDidEnter"
 		static let mouseDidExit = "mouseDidExit"
@@ -82,11 +85,25 @@ final class DetailWebViewController: NSViewController, WKUIDelegate {
 
 		box.addSubview(webView)
 
+		readingPositionIndicatorView = NSView(frame: NSRect.zero)
+		readingPositionIndicatorView.wantsLayer = true
+		readingPositionIndicatorView.layer?.backgroundColor = NSColor.systemYellow.cgColor
+		readingPositionIndicatorView.translatesAutoresizingMaskIntoConstraints = false
+		readingPositionIndicatorView.isHidden = true
+
+		box.addSubview(readingPositionIndicatorView)
+
+		readingPositionIndicatorViewTopAnchorConstraint = NSLayoutConstraint(item: readingPositionIndicatorView!, attribute: NSLayoutConstraint.Attribute.top, relatedBy: NSLayoutConstraint.Relation.equal, toItem: view, attribute: NSLayoutConstraint.Attribute.top, multiplier: 1.0, constant: 0.0)
+
 		let constraints = [
 			webView.topAnchor.constraint(equalTo: view.topAnchor),
 			webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 			webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
 			webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+			readingPositionIndicatorView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+			readingPositionIndicatorView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+			readingPositionIndicatorView.heightAnchor.constraint(equalToConstant: 20.0),
+			readingPositionIndicatorViewTopAnchorConstraint!
 		]
 
 		NSLayoutConstraint.activate(constraints)
@@ -116,6 +133,20 @@ final class DetailWebViewController: NSViewController, WKUIDelegate {
 
 	override func scrollPageDown(_ sender: Any?) {
 		webView.scrollPageDown(sender)
+		if(readingPositionIndicatorOffsetY > 0.0) {
+			readingPositionIndicatorViewTopAnchorConstraint?.constant = readingPositionIndicatorOffsetY
+			self.readingPositionIndicatorView.alphaValue = 0.6
+			readingPositionIndicatorView.isHidden = false
+
+			DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+				NSAnimationContext.runAnimationGroup({ (NSAnimationContext) in
+					NSAnimationContext.duration = 1.5
+					self.readingPositionIndicatorView.animator().alphaValue = 0.0
+				}) {
+					self.readingPositionIndicatorView.isHidden = true
+				}
+			}
+		}
 	}
 }
 
@@ -219,6 +250,7 @@ private extension DetailWebViewController {
 			}
 
 			let scrollInfo = ScrollInfo(contentHeight: contentHeight, viewHeight: self.webView.frame.height, offsetY: offsetY)
+			self.readingPositionIndicatorOffsetY = scrollInfo.canScrollDownFullPage() ? 0.0 : scrollInfo.readingIndicatorYPosition()
 			callback(scrollInfo)
 		}
 	}
@@ -247,5 +279,21 @@ private struct ScrollInfo {
 
 		self.canScrollDown = viewHeight + offsetY < contentHeight
 		self.canScrollUp = offsetY > 0.1
+	}
+
+	public func isLastPage() -> Bool {
+		offsetY + viewHeight >= contentHeight
+	}
+
+	public func canScrollDownFullPage() -> Bool {
+		offsetY + (2 * viewHeight) < contentHeight
+	}
+
+	public func scrollDownRemaining() -> CGFloat {
+		contentHeight - offsetY - viewHeight
+	}
+
+	public func readingIndicatorYPosition() -> CGFloat {
+		viewHeight - scrollDownRemaining()
 	}
 }

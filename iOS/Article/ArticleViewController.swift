@@ -82,7 +82,11 @@ class ArticleViewController: UIViewController {
 	override var keyCommands: [UIKeyCommand]? {
 		return keyboardManager.keyCommands
 	}
-	
+
+	private var readingPositionIndicatorView: UIView!
+	private var readingPositionIndicatorOffsetY: CGFloat = 0.0
+	private var readingPositionIndicatorViewTopAnchorConstraint: NSLayoutConstraint?
+
 	deinit {
 		if webView != nil  {
 			webView.removeFromSuperview()
@@ -103,7 +107,8 @@ class ArticleViewController: UIViewController {
 		navigationItem.titleView = articleExtractorButton
 
 		ArticleViewControllerWebViewProvider.shared.dequeueWebView() { webView in
-			
+
+			webView.scrollView.delegate = self
 			self.webView = webView
 			self.webViewContainer.addChildAndPin(webView)
 			webView.navigationDelegate = self
@@ -122,7 +127,23 @@ class ArticleViewController: UIViewController {
 //			webView.load(request)
 
 		}
-		
+
+		readingPositionIndicatorView = UIView()
+		readingPositionIndicatorView.backgroundColor = UIColor.systemYellow
+		readingPositionIndicatorView.translatesAutoresizingMaskIntoConstraints = false
+		readingPositionIndicatorView.isHidden = true
+
+		view.addSubview(readingPositionIndicatorView)
+
+		readingPositionIndicatorViewTopAnchorConstraint = NSLayoutConstraint(item: readingPositionIndicatorView!, attribute: NSLayoutConstraint.Attribute.top, relatedBy: NSLayoutConstraint.Relation.equal, toItem: webViewContainer, attribute: NSLayoutConstraint.Attribute.top, multiplier: 1.0, constant: 0.0)
+		let constraints = [
+			readingPositionIndicatorView.leadingAnchor.constraint(equalTo: webViewContainer.leadingAnchor),
+			readingPositionIndicatorView.trailingAnchor.constraint(equalTo: webViewContainer.trailingAnchor),
+			readingPositionIndicatorView.heightAnchor.constraint(equalToConstant: 20.0),
+			readingPositionIndicatorViewTopAnchorConstraint!
+		]
+
+		NSLayoutConstraint.activate(constraints)
 	}
 
 	func updateUI() {
@@ -291,8 +312,27 @@ class ArticleViewController: UIViewController {
 		let convertedPoint = self.view.convert(CGPoint(x: 0, y: 0), to: webView.scrollView)
 		let scrollToPoint = CGPoint(x: convertedPoint.x, y: scrollToY)
 		webView.scrollView.setContentOffset(scrollToPoint, animated: true)
+
+		let fullScrollY = webView.scrollView.contentOffset.y + webView.scrollView.bounds.size.height
+		readingPositionIndicatorOffsetY = fullScrollY - scrollToY
 	}
-	
+
+	func flashReadingPositionIndicator(y ypos: CGFloat) {
+		readingPositionIndicatorViewTopAnchorConstraint?.constant = ypos
+		readingPositionIndicatorView.alpha = 0.6
+		readingPositionIndicatorView.isHidden = false
+
+		let animator = UIViewPropertyAnimator.init(duration: 1.5, curve: UIView.AnimationCurve.linear, animations: nil)
+		animator.addAnimations {
+			self.readingPositionIndicatorView.alpha = 0.0
+		}
+		animator.addCompletion { (UIViewAnimatingPosition) in
+			self.readingPositionIndicatorView.isHidden = true
+		}
+
+		animator.startAnimation()
+	}
+
 	func hideClickedImage() {
 		webView?.evaluateJavaScript("hideClickedImage();")
 	}
@@ -395,6 +435,16 @@ extension ArticleViewController: UIViewControllerTransitioningDelegate {
 	func animationController(forDismissed dismissed: UIViewController) -> UIViewControllerAnimatedTransitioning? {
 		transition.presenting = false
 		return transition
+	}
+}
+
+// MARK: UIScrollViewDelegate
+extension ArticleViewController: UIScrollViewDelegate {
+
+	func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+		if(readingPositionIndicatorOffsetY > 0.0) {
+			flashReadingPositionIndicator(y: readingPositionIndicatorOffsetY)
+		}
 	}
 }
 
